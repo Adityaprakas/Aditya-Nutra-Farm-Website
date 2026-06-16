@@ -1,0 +1,6 @@
+{
+  "name": "Aditya Nutra Farm",
+  "description": "Premium Bihar Makhana and healthy dry nuts store delivered direct from farmer lotus harvesting ponds.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
