@@ -1,32 +1,61 @@
 {
   "entities": {
-    "UserProfile": {
-      "title": "UserProfile",
-      "description": "User profile with language preference stored in Firestore",
+    "User": {
+      "title": "User",
+      "description": "User profile containing localized configuration preferences.",
       "type": "object",
       "properties": {
         "uid": {
           "type": "string",
-          "description": "The unique user ID from Firebase Auth"
+          "description": "The unique Firebase Authentication user ID."
         },
         "preferredLanguage": {
           "type": "string",
           "enum": ["en", "hi"],
-          "description": "User's preferred language"
+          "description": "The preferred language setting ('en' or 'hi')."
         },
         "updatedAt": {
           "type": "string",
-          "format": "date-time",
-          "description": "Timestamp when preferred language was updated"
+          "description": "ISO timestamp representing the last configuration update."
         }
       },
-      "required": ["uid", "preferredLanguage", "updatedAt"]
+      "required": ["uid", "preferredLanguage"]
+    },
+    "OrderFeedback": {
+      "title": "OrderFeedback",
+      "description": "Stores transaction feedback containing ratings and comments.",
+      "type": "object",
+      "properties": {
+        "feedback": {
+          "type": "object",
+          "description": "Customer satisfaction feedback block.",
+          "properties": {
+            "rating": {
+              "type": "integer",
+              "description": "Star rating input from 1 to 5."
+            },
+            "comment": {
+              "type": "string",
+              "description": "Written commentary or description."
+            },
+            "createdAt": {
+              "type": "string",
+              "description": "ISO timestamp indicating feedback submission time."
+            }
+          },
+          "required": ["rating", "comment", "createdAt"]
+        }
+      }
     }
   },
   "firestore": {
-    "/users/{userId}": {
-      "schema": "UserProfile",
-      "description": "Collection of user language and profile configs"
+    "users/{userId}": {
+      "schema": "User",
+      "description": "Locates user preferred configurations, queried by user auth context."
+    },
+    "orders/{orderId}": {
+      "schema": "OrderFeedback",
+      "description": "Holds customer feedback rating data associated with an order identifier."
     }
   }
 }

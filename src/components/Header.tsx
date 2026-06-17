@@ -1,5 +1,6 @@
 import React from 'react';
 import { Search, ShoppingCart, User, MapPin, Store, Leaf, LogOut, Menu, X, ShieldAlert, Globe, Heart } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 import { User as DBUser, CartItem } from '../types.ts';
 import { getUiTranslation } from '../lib/translations.ts';
 
@@ -98,22 +99,22 @@ export default function Header({
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between items-center h-20 gap-4">
+        <div className="flex justify-between items-center h-20 gap-1.5 sm:gap-4">
           {/* Brand Logo */}
           <div 
             onClick={() => { setActiveTab('home'); }} 
-            className="flex items-center gap-2 cursor-pointer group shrink-0"
+            className="flex items-center gap-1.5 sm:gap-2 cursor-pointer group shrink"
             id="header-brand-logo"
           >
-            <div className="w-10 h-10 rounded-full bg-[#D4AF37] flex items-center justify-center text-[#0C0D0E] font-bold text-xl italic shadow-inner group-hover:bg-[#B48F27] transition-colors">
+            <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-[#D4AF37] flex items-center justify-center text-[#0C0D0E] font-bold text-base sm:text-xl italic shadow-inner group-hover:bg-[#B48F27] transition-colors shrink-0">
               A
             </div>
-            <div>
-              <h1 className="text-lg font-bold tracking-tight text-[#D4AF37] group-hover:text-white transition-colors font-serif m-0 leading-tight">
-                ADITYA NUTRA FARM
+            <div className="min-w-0">
+              <h1 className="text-xs sm:text-base md:text-lg font-bold tracking-tight text-[#D4AF37] group-hover:text-white transition-colors font-serif m-0 leading-tight uppercase truncate">
+                Aditya Nutra
               </h1>
-              <p className="text-[10px] uppercase tracking-wider text-[#888] font-medium m-0 flex items-center gap-1">
-                <Leaf size={10} className="text-[#D4AF37]" /> {language === 'hi' ? 'प्रीमियम मिथिला मखाना' : 'Premium Bihar Makhana'}
+              <p className="text-[8px] sm:text-[10px] uppercase tracking-wider text-[#888] font-medium m-0 flex items-center gap-0.5">
+                <Leaf size={8} className="text-[#D4AF37]" /> {language === 'hi' ? 'मिथिला मखाना' : 'Bihar Makhana'}
               </p>
             </div>
           </div>
@@ -135,7 +136,7 @@ export default function Header({
                 className={`py-2 border-b-2 transition-all cursor-pointer ${
                   activeTab === link.id 
                     ? 'border-[#D4AF37] text-[#D4AF37] font-semibold' 
-                    : `border-transparent ${theme === 'light' ? 'text-[#5C4D3C] hover:text-[#2C2115]' : 'text-[#CCC] hover:text-white'}`
+                    : `border-transparent ${theme === 'light' ? 'text-[#5C4D32] hover:text-[#2C2115]' : 'text-[#CCC] hover:text-white'}`
                 }`}
               >
                 {link.label}
@@ -144,7 +145,7 @@ export default function Header({
           </nav>
 
           {/* Search bar, Profile, and Cart */}
-          <div className="flex items-center gap-2.5 sm:gap-4 flex-1 max-w-md lg:max-w-xs xl:max-w-sm justify-end">
+          <div className="flex items-center gap-1 sm:gap-3 justify-end shrink-0">
             {/* Live Search Input */}
             <div className="relative w-full max-w-[155px] sm:max-w-xs group hidden sm:block">
               <input
@@ -163,21 +164,21 @@ export default function Header({
             {/* Language Toggle Switcher Button */}
             <button
               onClick={onToggleLanguage}
-              className={`flex items-center gap-1 px-2.5 py-1.5 rounded-full border ${theme === 'light' ? 'border-amber-900/15 bg-white hover:bg-amber-50 text-amber-950' : 'border-white/10 bg-[#1A1D21] hover:bg-[#23262B] text-[#CCC] hover:text-white'} text-xs font-semibold transition-all cursor-pointer select-none shrink-0 animate-pulse hover:animate-none`}
+              className={`flex items-center gap-0.5 sm:gap-1 px-1.5 sm:px-2.5 py-1 sm:py-1.5 rounded-full border ${theme === 'light' ? 'border-amber-900/15 bg-white hover:bg-amber-50 text-amber-950' : 'border-white/10 bg-[#1A1D21] hover:bg-[#23262B] text-[#CCC] hover:text-white'} text-[10px] sm:text-xs font-semibold transition-all cursor-pointer select-none shrink-0 animate-pulse hover:animate-none`}
               title={language === 'en' ? 'Switched to English. Click for हिन्दी' : 'हिन्दी पर स्विच किया गया। English के लिए क्लिक करें'}
             >
-              <Globe size={13} className="text-[#D4AF37]" />
-              <span className="font-mono leading-none tracking-wider text-[11px] font-bold">{language === 'en' ? 'HI' : 'EN'}</span>
+              <Globe size={11} className="text-[#D4AF37]" />
+              <span className="font-mono leading-none tracking-wider text-[9px] sm:text-[11px] font-bold">{language === 'en' ? 'HI' : 'EN'}</span>
             </button>
 
             {/* Admin trigger button if role === admin */}
             {user && user.role === 'admin' && (
               <button
                 onClick={onOpenAdmin}
-                className="flex items-center gap-1 bg-[#D4AF37]/10 hover:bg-[#D4AF37]/20 text-[#D4AF37] border border-[#D4AF37]/30 rounded-full px-3 py-1.5 text-xs font-semibold shadow-sm transition-colors shrink-0 cursor-pointer"
+                className="flex items-center gap-1 bg-[#D4AF37]/10 hover:bg-[#D4AF37]/20 text-[#D4AF37] border border-[#D4AF37]/30 rounded-full px-2 sm:px-3 py-1 sm:py-1.5 text-[10px] sm:text-xs font-semibold shadow-sm transition-colors shrink-0 cursor-pointer"
                 title="Admin Control Center"
               >
-                <Store size={14} />
+                <Store size={12} />
                 <span className="hidden md:inline">Console</span>
               </button>
             )}
@@ -291,9 +292,9 @@ export default function Header({
             ) : (
               <button
                 onClick={onLogin}
-                className="flex items-center gap-1.5 text-[#0C0D0E] hover:bg-[#B48F27] bg-[#D4AF37] border border-transparent rounded-full px-3.5 py-1.5 text-xs font-semibold shadow-sm transition-all cursor-pointer"
+                className="flex items-center gap-1 sm:gap-1.5 text-[#0C0D0E] hover:bg-[#B48F27] bg-[#D4AF37] border border-transparent rounded-full px-2 sm:px-3.5 py-1 sm:py-1.5 text-[10px] sm:text-xs font-semibold shadow-sm transition-all cursor-pointer whitespace-nowrap shrink-0"
               >
-                <User size={13} />
+                <User size={11} />
                 <span>{getUiTranslation(language, 'signIn')}</span>
               </button>
             )}
@@ -301,27 +302,43 @@ export default function Header({
             {/* Wishlist Heart Button */}
             <button
               onClick={() => setActiveTab('wishlist')}
-              className={`relative p-2 transition-colors cursor-pointer bg-transparent border-none shrink-0 ${
+              className={`relative p-1.5 sm:p-2 transition-colors cursor-pointer bg-transparent border-none shrink-0 ${
                 activeTab === 'wishlist' ? 'text-red-500' : 'text-[#D4AF37] hover:text-red-500'
               }`}
               aria-label="View Saved Wishlist"
               title={getUiTranslation(language, 'wishlist')}
             >
-              <Heart size={21} fill={activeTab === 'wishlist' || wishlistCount > 0 ? "currentColor" : "none"} />
-              {wishlistCount > 0 && (
-                <span className="absolute -top-1 -right-1 bg-red-500 text-white font-bold text-[10px] w-4.5 h-4.5 rounded-full flex items-center justify-center ring-2 ring-[#121417] shadow-md animate-pulse">
-                  {wishlistCount}
-                </span>
-              )}
+              <motion.div
+                key={wishlistCount}
+                animate={{ scale: [1, 1.25, 1] }}
+                transition={{ duration: 0.3 }}
+                className="inline-block"
+              >
+                <Heart className="w-[18px] h-[18px] sm:w-[21px] sm:h-[21px]" fill={activeTab === 'wishlist' || wishlistCount > 0 ? "currentColor" : "none"} />
+              </motion.div>
+              <AnimatePresence mode="popLayout">
+                {wishlistCount > 0 && (
+                  <motion.span
+                    key={wishlistCount}
+                    initial={{ scale: 0.5, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    exit={{ scale: 0.5, opacity: 0 }}
+                    transition={{ type: "spring", stiffness: 400, damping: 15 }}
+                    className="absolute -top-1 -right-1 bg-red-500 text-white font-bold text-[10px] w-4.5 h-4.5 rounded-full flex items-center justify-center ring-2 ring-[#121417] shadow-md"
+                  >
+                    {wishlistCount}
+                  </motion.span>
+                )}
+              </AnimatePresence>
             </button>
 
             {/* Cart Icon with sticky counter badge */}
             <button
               onClick={onOpenCart}
-              className="relative p-2 text-[#D4AF37] hover:text-[#B48F27] transition-colors cursor-pointer bg-transparent border-none shrink-0"
+              className="relative p-1.5 sm:p-2 text-[#D4AF37] hover:text-[#B48F27] transition-colors cursor-pointer bg-transparent border-none shrink-0"
               aria-label="View Shopping Cart"
             >
-              <ShoppingCart size={21} />
+              <ShoppingCart className="w-[18px] h-[18px] sm:w-[21px] sm:h-[21px]" />
               {cartCount > 0 && (
                 <span className="absolute -top-1 -right-1 bg-red-600 text-white font-bold text-[10px] w-4.5 h-4.5 rounded-full flex items-center justify-center ring-2 ring-[#121417] animate-bounce">
                   {cartCount}
@@ -332,9 +349,9 @@ export default function Header({
             {/* Mobile Menu Icon */}
             <button
               onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-              className="lg:hidden p-2 text-[#D4AF37] hover:text-[#B48F27] focus:outline-none bg-transparent border-none shrink-0"
+              className="lg:hidden p-1.5 sm:p-2 text-[#D4AF37] hover:text-[#B48F27] focus:outline-none bg-transparent border-none shrink-0"
             >
-              {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
+              {isMobileMenuOpen ? <X className="w-[20px] h-[20px] sm:w-[24px] sm:h-[24px]" /> : <Menu className="w-[20px] h-[20px] sm:w-[24px] sm:h-[24px]" />}
             </button>
           </div>
         </div>

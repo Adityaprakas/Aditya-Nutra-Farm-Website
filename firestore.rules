@@ -29,9 +29,28 @@ service cloud.firestore {
         && data.updatedAt is string;
     }
 
+    function isValidOrderFeedback(data) {
+      return data.keys().hasAll(['feedback'])
+        && data.keys().size() == 1
+        && data.feedback is map
+        && data.feedback.keys().hasAll(['rating', 'comment', 'createdAt'])
+        && data.feedback.keys().size() == 3
+        && data.feedback.rating is int
+        && data.feedback.rating >= 1
+        && data.feedback.rating <= 5
+        && data.feedback.comment is string
+        && data.feedback.comment.size() <= 5000
+        && data.feedback.createdAt is string;
+    }
+
     match /users/{userId} {
       allow get: if isOwner(userId) && isValidId(userId);
       allow create, update: if isOwner(userId) && isValidId(userId) && isValidUserProfile(request.resource.data);
+    }
+
+    match /orders/{orderId} {
+      allow get: if isSignedIn() && isValidId(orderId);
+      allow create, update: if isSignedIn() && isValidId(orderId) && isValidOrderFeedback(request.resource.data);
     }
   }
 }

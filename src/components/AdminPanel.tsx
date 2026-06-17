@@ -5,9 +5,19 @@ import {
 import { 
   BarChart3, Plus, Edit2, Trash2, Package, ShoppingBag, 
   Users, CheckCircle, RefreshCw, X, AlertTriangle, ArrowUpRight, Truck, IndianRupee, Bell,
-  Gift, Percent, Tag, Sliders, Calendar
+  Gift, Percent, Tag, Sliders, Calendar, FileText, ExternalLink, Copy, CheckSquare
 } from 'lucide-react';
 import { Product, Order, User } from '../types.ts';
+import { 
+  authorizeGoogleForms, 
+  hasGoogleFormsAccess, 
+  getGoogleFormsAccessToken, 
+  createMakhanaCampaignForm, 
+  fetchGoogleFormResponses, 
+  clearGoogleFormsAccess,
+  GoogleFormMetadata, 
+  GoogleFormResponseSummary 
+} from '../lib/googleForms.ts';
 
 interface AdminNotification {
   id: number;
@@ -24,7 +34,7 @@ interface AdminPanelProps {
 }
 
 export default function AdminPanel({ token, onClose, triggerToast, language = 'en' }: AdminPanelProps) {
-  const [activeSubTab, setActiveSubTab] = React.useState<'reports' | 'products' | 'orders' | 'customers' | 'coupons'>('reports');
+  const [activeSubTab, setActiveSubTab] = React.useState<'reports' | 'products' | 'orders' | 'customers' | 'coupons' | 'forms'>('reports');
   const [activeFestiveSeasonOverride, setActiveFestiveSeasonOverride] = React.useState<string>(() => {
     return localStorage.getItem('an_active_festive_season') || 'auto';
   });
@@ -126,6 +136,26 @@ export default function AdminPanel({ token, onClose, triggerToast, language = 'e
   const [notifications, setNotifications] = React.useState<AdminNotification[]>([]);
   const [showNotificationsMenu, setShowNotificationsMenu] = React.useState(false);
 
+  // Google Forms Integration States
+  const [googleForms, setGoogleForms] = React.useState<GoogleFormMetadata[]>(() => {
+    const raw = localStorage.getItem('an_google_forms');
+    if (raw) {
+      try { return JSON.parse(raw); } catch (e) { console.error(e); }
+    }
+    return [];
+  });
+  const [googleFormsConnected, setGoogleFormsConnected] = React.useState(() => hasGoogleFormsAccess());
+  const [isAuthorizingForms, setIsAuthorizingForms] = React.useState(false);
+  const [isCreatingForm, setIsCreatingForm] = React.useState(false);
+  const [customFormTitle, setCustomFormTitle] = React.useState('Bihar Makhana Crunch Customer Feedback');
+  const [customFormDesc, setCustomFormDesc] = React.useState('Help us craft high-protein superfoods from Mithila directly to your snack bag.');
+  const [selectedFormForResponses, setSelectedFormForResponses] = React.useState<string | null>(null);
+  const [responsesSummary, setResponsesSummary] = React.useState<GoogleFormResponseSummary | null>(null);
+  const [isLoadingResponses, setIsLoadingResponses] = React.useState(false);
+  const [activeBannerFormId, setActiveBannerFormId] = React.useState<string | null>(() => {
+    return localStorage.getItem('an_active_google_form_id') || null;
+  });
+
   // Modal Coupon States
   const [showCreateCouponModal, setShowCreateCouponModal] = React.useState(false);
   const [modalCouponCode, setModalCouponCode] = React.useState('');
@@ -133,6 +163,152 @@ export default function AdminPanel({ token, onClose, triggerToast, language = 'e
   const [modalCouponMinOrder, setModalCouponMinOrder] = React.useState('299');
   const [modalCouponExpiry, setModalCouponExpiry] = React.useState('2026-06-30');
   const [modalCouponDesc, setModalCouponDesc] = React.useState('');
+
+  // Google Forms Integration Handler Functions
+  const handleConnectGoogleForms = async () => {
+    setIsAuthorizingForms(true);
+    try {
+      const token = await authorizeGoogleForms();
+      if (token) {
+        setGoogleFormsConnected(true);
+        if (triggerToast) triggerToast(
+          language === 'hi'
+            ? 'गूगल फॉर्म्स प्रमाणीकरण सफल! अब आप लाइव सर्वे बना सकते हैं।'
+            : 'Google Forms workspace authorized successfully! You can now deploy feedback surveys.',
+          'success'
+        );
+      }
+    } catch (err: any) {
+      console.error(err);
+      if (triggerToast) triggerToast(
+        language === 'hi'
+          ? 'प्रमाणीकरण विफल रहा: ' + (err.message || err)
+          : 'Authentication failed: ' + (err.message || err),
+        'err'
+      );
+    } finally {
+      setIsAuthorizingForms(false);
+    }
+  };
+
+  const handleDisconnectGoogleForms = () => {
+    clearGoogleFormsAccess();
+    setGoogleFormsConnected(false);
+    if (triggerToast) triggerToast(
+      language === 'hi' ? 'गूगल फॉर्म्स डिस्कनेक्ट हो गया है।' : 'Google Forms disconnected.',
+      'info'
+    );
+  };
+
+  const handleCreateGoogleForm = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!customFormTitle.trim()) return;
+    setIsCreatingForm(true);
+
+    try {
+      const newForm = await createMakhanaCampaignForm(
+        customFormTitle.trim(),
+        customFormDesc.trim()
+      );
+
+      const updated = [newForm, ...googleForms];
+      setGoogleForms(updated);
+      localStorage.setItem('an_google_forms', JSON.stringify(updated));
+
+      // Auto-set as active storefront banner
+      localStorage.setItem('an_active_google_form_id', newForm.formId);
+      localStorage.setItem(`an_active_google_form_url`, newForm.responderUri);
+      localStorage.setItem(`an_active_google_form_title`, newForm.title);
+      setActiveBannerFormId(newForm.formId);
+      window.dispatchEvent(new Event('google-form-banner-updated'));
+
+      setCustomFormTitle('Bihar Makhana Crunch Customer Feedback');
+      setCustomFormDesc('Help us craft high-protein superfoods from Mithila directly to your snack bag.');
+
+      if (triggerToast) triggerToast(
+        language === 'hi'
+          ? 'नया गूगल फॉर्म सफलतापूर्वक पब्लिश किया गया!'
+          : 'Google Form created and deployed successfully to your Drive!',
+        'success'
+      );
+    } catch (err: any) {
+      console.error(err);
+      if (triggerToast) triggerToast(
+        `Failed to deploy form: ${err.message || err}`,
+        'err'
+      );
+    } finally {
+      setIsCreatingForm(false);
+    }
+  };
+
+  const handleFetchFormResponses = async (formId: string) => {
+    setSelectedFormForResponses(formId);
+    setIsLoadingResponses(true);
+    setResponsesSummary(null);
+
+    try {
+      const summary = await fetchGoogleFormResponses(formId);
+      setResponsesSummary(summary);
+    } catch (err: any) {
+      console.error(err);
+      if (triggerToast) triggerToast(
+        `Failed to fetch Google Form responses: ${err.message || err}`,
+        'err'
+      );
+    } finally {
+      setIsLoadingResponses(false);
+    }
+  };
+
+  const handleToggleBannerForm = (formItem: GoogleFormMetadata) => {
+    if (activeBannerFormId === formItem.formId) {
+      localStorage.removeItem('an_active_google_form_id');
+      localStorage.removeItem(`an_active_google_form_url`);
+      localStorage.removeItem(`an_active_google_form_title`);
+      setActiveBannerFormId(null);
+      if (triggerToast) triggerToast(
+        language === 'hi' ? 'स्टोरफ्रंट से फॉर्म हटा दिया गया।' : 'Form disassociated from storefront.',
+        'info'
+      );
+    } else {
+      localStorage.setItem('an_active_google_form_id', formItem.formId);
+      localStorage.setItem(`an_active_google_form_url`, formItem.responderUri);
+      localStorage.setItem(`an_active_google_form_title`, formItem.title);
+      setActiveBannerFormId(formItem.formId);
+      if (triggerToast) triggerToast(
+        language === 'hi' ? 'फॉर्म स्टोरफ्रंट सर्वे बैनर के रूप में सक्रिय!' : 'Associated form as the default storefront feedback survey!',
+        'success'
+      );
+    }
+    window.dispatchEvent(new Event('google-form-banner-updated'));
+  };
+
+  const handleDeleteFormRecord = (formId: string) => {
+    if (window.confirm(language === 'hi' ? 'क्या आप इस फॉर्म को इस रिकॉर्ड से हटाना चाहते हैं?' : 'Are you sure you want to remove this Google Form record? (Important: This does not delete the physical form from your Google Drive)')) {
+      const updated = googleForms.filter(f => f.formId !== formId);
+      setGoogleForms(updated);
+      localStorage.setItem('an_google_forms', JSON.stringify(updated));
+
+      if (activeBannerFormId === formId) {
+        localStorage.removeItem('an_active_google_form_id');
+        localStorage.removeItem(`an_active_google_form_url`);
+        localStorage.removeItem(`an_active_google_form_title`);
+        setActiveBannerFormId(null);
+        window.dispatchEvent(new Event('google-form-banner-updated'));
+      }
+
+      if (selectedFormForResponses === formId) {
+        setSelectedFormForResponses(null);
+        setResponsesSummary(null);
+      }
+
+      if (triggerToast) triggerToast(
+        language === 'hi' ? 'रिकॉर्ड रिमूव किया गया।' : 'Google form record removed from local listing.',
+        'success'
+      );
+    }
+  };
 
   // Submit Handler for Modal Create Coupon
   const handleModalCreateCoupon = (e: React.FormEvent) => {
@@ -660,7 +836,8 @@ export default function AdminPanel({ token, onClose, triggerToast, language = 'e
             { id: 'products', label: 'Inventory & Products', icon: <Package size={15} /> },
             { id: 'orders', label: 'Customer Orders', icon: <ShoppingBag size={15} /> },
             { id: 'customers', label: 'Registered Customers', icon: <Users size={15} /> },
-            { id: 'coupons', label: 'Coupon Management', icon: <Gift size={15} /> }
+            { id: 'coupons', label: 'Coupon Management', icon: <Gift size={15} /> },
+            { id: 'forms', label: 'Google Forms Survey', icon: <FileText size={15} /> }
           ].map((tab) => (
             <button
               key={tab.id}
@@ -1527,6 +1704,475 @@ export default function AdminPanel({ token, onClose, triggerToast, language = 'e
                       )}
                     </div>
                   </div>
+                </div>
+              )}
+
+              {/* SUB TAB: GOOGLE FORMS INTEGRATION WORKSPACE */}
+              {activeSubTab === 'forms' && (
+                <div className="space-y-6" id="admin-google-forms-container">
+                  {/* Title and Authentication Status Header Card */}
+                  <div className="bg-gradient-to-r from-stone-900 via-zinc-800 to-stone-900 text-white p-6 rounded-3xl border border-white/5 shadow-xl flex flex-col md:flex-row items-baseline md:items-center justify-between gap-4">
+                    <div className="space-y-1.5">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xl">📊</span>
+                        <h3 className="font-serif font-black text-[#D4AF37] text-base uppercase tracking-wider">
+                          Google Forms Workspace Controller
+                        </h3>
+                        {googleFormsConnected ? (
+                          <span className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full inline-flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
+                            Connected
+                          </span>
+                        ) : (
+                          <span className="bg-amber-500/10 text-amber-400 border border-amber-500/20 text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full">
+                            Authorization Required
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-gray-300 max-w-xl leading-relaxed">
+                        Establish direct, live OAuth synchronization with Google Forms. Deploy, embed, and analyze customer feedback surveys for Aditya Nutra Farms in real-time.
+                      </p>
+                    </div>
+
+                    <div className="shrink-0 w-full md:w-auto">
+                      {googleFormsConnected ? (
+                        <div className="flex items-center gap-3">
+                          <span className="text-xs font-mono text-gray-400">Owner Access Granted</span>
+                          <button
+                            type="button"
+                            onClick={handleDisconnectGoogleForms}
+                            className="bg-red-950 border border-red-500/30 hover:bg-red-900 text-red-200 font-bold text-xs py-2 px-4 rounded-xl cursor-pointer transition-all active:scale-95 shadow-sm"
+                          >
+                            Disconnect
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={handleConnectGoogleForms}
+                          disabled={isAuthorizingForms}
+                          className="gsi-material-button w-full md:w-auto cursor-pointer shadow-md"
+                          id="admin-connect-google-forms-btn"
+                        >
+                          <div className="gsi-material-button-state"></div>
+                          <div className="gsi-material-button-content-wrapper">
+                            <div className="gsi-material-button-icon">
+                              <svg version="1.1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" style={{ display: "block" }}>
+                                <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"></path>
+                                <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"></path>
+                                <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"></path>
+                                <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"></path>
+                                <path fill="none" d="M0 0h48v48H0z"></path>
+                              </svg>
+                            </div>
+                            <span className="gsi-material-button-contents font-sans font-bold text-[#222]">
+                              {isAuthorizingForms ? 'Connecting Google Account...' : 'Connect Google Forms'}
+                            </span>
+                          </div>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {!googleFormsConnected ? (
+                    /* Initial onboarding visual state if unauthenticated */
+                    <div className="bg-white rounded-3xl p-10 border border-amber-100 text-center max-w-2xl mx-auto space-y-5 shadow-sm">
+                      <div className="w-16 h-16 bg-[#D4AF37]/10 text-[#D4AF37] rounded-full flex items-center justify-center text-2xl mx-auto border border-[#D4AF37]/20">
+                        📋
+                      </div>
+                      <div className="space-y-2">
+                        <h4 className="font-serif font-black text-amber-950 text-base">
+                          Authorize Forms Integration Engine
+                        </h4>
+                        <p className="text-xs text-gray-500 leading-relaxed max-w-md mx-auto">
+                          Click the "Connect Google Forms" button above to grant permission. Once authorized, our system will generate secure, branded customer questionnaires and fetch responses automatically using the secure Google Workspace APIs.
+                        </p>
+                      </div>
+                      <div className="pt-2">
+                        <button
+                          type="button"
+                          onClick={handleConnectGoogleForms}
+                          className="bg-neutral-900 hover:bg-black text-white font-bold text-xs py-2.5 px-6 rounded-xl transition-all cursor-pointer shadow-sm"
+                        >
+                          Unlock Google Forms Integration
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    /* Form Creation & Listing Subsystem */
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
+                      {/* Left Block: Form Generator Panel */}
+                      <div className="lg:col-span-4 bg-white p-6 rounded-2xl border border-amber-100 shadow-sm flex flex-col justify-between">
+                        <div className="space-y-4">
+                          <div className="border-b border-gray-100 pb-3">
+                            <h4 className="font-serif font-black text-amber-950 text-sm flex items-center gap-1.5">
+                              <Plus size={15} className="text-[#D4AF37]" />
+                              <span>Deploy Brand Survey</span>
+                            </h4>
+                            <p className="text-[10px] text-gray-400 mt-1">
+                              Publish a pristine feedback form structured with 3 custom questions addressing quality, favorite flavors, and qualitative reviews.
+                            </p>
+                          </div>
+
+                          <form onSubmit={handleCreateGoogleForm} className="space-y-4 text-xs">
+                            <div>
+                              <label className="block text-amber-950 font-bold mb-1 uppercase tracking-wider">
+                                Survey Title
+                              </label>
+                              <input
+                                type="text"
+                                required
+                                value={customFormTitle}
+                                onChange={(e) => setCustomFormTitle(e.target.value)}
+                                className="w-full border border-amber-100 rounded-xl p-3 outline-none focus:border-[#D4AF37] font-serif font-bold text-[#5C3A21] bg-amber-50/10 placeholder:font-sans placeholder:normal-case"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-amber-950 font-bold mb-1 uppercase tracking-wider">
+                                Survey Objective / Subtitle
+                              </label>
+                              <textarea
+                                required
+                                rows={4}
+                                value={customFormDesc}
+                                onChange={(e) => setCustomFormDesc(e.target.value)}
+                                className="w-full border border-amber-100 rounded-xl p-3 outline-none focus:border-[#D4AF37] font-sans leading-relaxed text-gray-600 bg-amber-50/10 text-[11px]"
+                              />
+                            </div>
+
+                            <button
+                              type="submit"
+                              disabled={isCreatingForm}
+                              className="w-full py-3 bg-[#D4AF37] hover:bg-[#Bca025] text-amber-950 font-black text-xs rounded-xl flex items-center justify-center gap-2 transition-all shadow active:scale-[0.98] disabled:opacity-50 cursor-pointer uppercase tracking-widest"
+                            >
+                              {isCreatingForm ? (
+                                <>
+                                  <div className="w-4.5 h-4.5 border-2 border-amber-950 border-t-transparent rounded-full animate-spin" />
+                                  <span>Deploying to Drive...</span>
+                                </>
+                              ) : (
+                                <>
+                                  <span>🚀 Deploy Survey Form</span>
+                                </>
+                              )}
+                            </button>
+                          </form>
+                        </div>
+
+                        <div className="bg-amber-50/40 border border-amber-100 p-3 rounded-xl mt-6 space-y-1 select-none">
+                          <span className="text-[9px] font-bold text-[#A37B24] uppercase tracking-widest block">
+                            💡 Did you know?
+                          </span>
+                          <p className="text-[9.5px] leading-relaxed text-amber-900/80 font-normal">
+                            Once created, toggling "Associate with Storefront" displays a branded banner on the homepage inviting live customers to fill it out!
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Right Block: Active Forms Listing & Diagnostics */}
+                      <div className="lg:col-span-8 bg-white p-6 rounded-2xl border border-amber-100 shadow-sm space-y-6">
+                        <div className="border-b border-gray-100 pb-3 flex items-center justify-between">
+                          <h4 className="font-serif font-black text-amber-950 text-sm">
+                            Created Google Forms ({googleForms.length})
+                          </h4>
+                          <span className="text-[9.5px] font-mono text-[#D4AF37] font-bold bg-[#D4AF37]/5 border border-[#D4AF37]/20 px-2.5 py-0.5 rounded-full select-none">
+                            Synchronized with GDrive
+                          </span>
+                        </div>
+
+                        {googleForms.length === 0 ? (
+                          <div className="flex flex-col items-center justify-center py-16 text-center text-gray-400 space-y-3">
+                            <span className="text-4xl opacity-50">📁</span>
+                            <p className="text-xs font-semibold text-amber-900/60 uppercase tracking-widest">No Surveys Registered</p>
+                            <p className="text-[10px] text-gray-400 max-w-sm leading-normal">
+                              Deploy your very first brand survey using the composition panel on the left to initialize the responses pipeline.
+                            </p>
+                          </div>
+                        ) : (
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {googleForms.map((form) => {
+                              const isSelected = selectedFormForResponses === form.formId;
+                              const isActiveBanner = activeBannerFormId === form.formId;
+                              
+                              return (
+                                <div
+                                  key={form.formId}
+                                  className={`border rounded-2xl p-5 transition-all flex flex-col justify-between ${
+                                    isSelected 
+                                      ? 'bg-amber-50/15 border-amber-500 shadow-md ring-1 ring-amber-500/20' 
+                                      : 'bg-white hover:bg-neutral-50 border-gray-100 shadow-sm'
+                                  }`}
+                                >
+                                  <div className="space-y-3.5">
+                                    <div className="flex items-start justify-between gap-2">
+                                      <div className="space-y-1">
+                                        <h5 className="font-serif font-black text-amber-950 text-xs sm:text-sm select-all">
+                                          📝 {form.title}
+                                        </h5>
+                                        <span className="text-[9px] font-mono text-gray-400 block">
+                                          Created: {new Date(form.createdTime).toLocaleDateString()}
+                                        </span>
+                                      </div>
+                                      
+                                      <div className="flex items-center gap-1.5 shrink-0">
+                                        <button
+                                          type="button"
+                                          onClick={() => handleToggleBannerForm(form)}
+                                          className={`py-1 px-2.5 rounded-lg border text-[9.5px] font-bold uppercase tracking-wider transition-all cursor-pointer ${
+                                            isActiveBanner
+                                              ? 'bg-[#D4AF37]/15 border-[#D4AF37] text-amber-900'
+                                              : 'bg-gray-50 hover:bg-gray-100 border-gray-200 text-gray-600'
+                                          }`}
+                                          title="Show or hide survey banner on active makhana bag store"
+                                        >
+                                          {isActiveBanner ? '★ Associated' : '☆ Private'}
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => handleDeleteFormRecord(form.formId)}
+                                          className="text-gray-400 hover:text-red-600 p-1 rounded-lg hover:bg-gray-100 transition-colors border-none bg-transparent cursor-pointer"
+                                          title="De-register Record"
+                                        >
+                                          <Trash2 size={13} />
+                                        </button>
+                                      </div>
+                                    </div>
+
+                                    {form.description && (
+                                      <p className="text-[10px] text-gray-500 leading-normal font-normal">
+                                        {form.description}
+                                      </p>
+                                    )}
+
+                                    {/* Link & Copy Actions Row */}
+                                    <div className="pt-2.5 border-t border-gray-50 flex flex-wrap items-center gap-2 text-[10px]">
+                                      <a
+                                        href={form.editUri}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="bg-amber-50 hover:bg-amber-100 border border-amber-100 text-amber-950 font-bold py-1 px-2 rounded flex items-center gap-1.5 text-[9px] transition-all"
+                                      >
+                                        <Sliders size={10} />
+                                        <span>Edit Form Space</span>
+                                        <ExternalLink size={8} />
+                                      </a>
+
+                                      <a
+                                        href={form.responderUri}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="bg-[#121417]/5 hover:bg-[#121417]/10 border border-neutral-200 text-neutral-800 font-bold py-1 px-2 rounded flex items-center gap-1.5 text-[9px] transition-all"
+                                      >
+                                        <FileText size={10} />
+                                        <span>Fill Form</span>
+                                        <ExternalLink size={8} />
+                                      </a>
+
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          const iframe = `<iframe src="${form.responderUri}?embedded=true" width="640" height="800" frameborder="0" marginheight="0" marginwidth="0">Loading survey...</iframe>`;
+                                          navigator.clipboard.writeText(iframe);
+                                          if (triggerToast) triggerToast('Iframe embed code copied!', 'success');
+                                        }}
+                                        className="bg-stone-50 hover:bg-stone-100 border border-stone-200 text-stone-600 font-medium py-1 px-2 rounded flex items-center gap-1 text-[9px] cursor-pointer"
+                                        title="Copy HTML iframe code"
+                                      >
+                                        <Copy size={9} />
+                                        <span>Embed Code</span>
+                                      </button>
+                                    </div>
+                                  </div>
+
+                                  <div className="mt-4 pt-3 border-t border-dashed border-gray-100">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleFetchFormResponses(form.formId)}
+                                      className={`w-full py-1.5 rounded-lg border font-bold text-[10.5px] uppercase tracking-wider flex items-center justify-center gap-1.5 cursor-pointer ${
+                                        isSelected 
+                                          ? 'bg-neutral-900 border-neutral-950 text-white shadow' 
+                                          : 'bg-neutral-50 hover:bg-gray-150 border-neutral-200 text-neutral-700'
+                                      }`}
+                                    >
+                                      <span>📊 Analyze Live Responses</span>
+                                    </button>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ACTIVE RESPONSES DETAIL DIALOGUE PANEL */}
+                  {googleFormsConnected && selectedFormForResponses && (
+                    <div className="bg-white rounded-3xl p-6 border border-amber-100 shadow-md space-y-6" id="google-forms-responses-visual-dashboard">
+                      <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xl">📈</span>
+                          <div>
+                            <h4 className="font-serif font-black text-amber-950 text-sm">
+                              Feedback Survey Analytics Metrics
+                            </h4>
+                            <p className="text-[10px] uppercase font-bold text-[#A37B24] tracking-widest font-sans">
+                              ID: {selectedFormForResponses}
+                            </p>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => handleFetchFormResponses(selectedFormForResponses)}
+                          disabled={isLoadingResponses}
+                          className="bg-amber-50 hover:bg-amber-100 text-amber-950 border border-amber-200 py-1 px-3 rounded-lg text-xs font-bold font-sans flex items-center gap-1 cursor-pointer transition-all shrink-0"
+                        >
+                          <RefreshCw size={11} className={isLoadingResponses ? 'animate-spin' : ''} />
+                          <span>Refresh Answers</span>
+                        </button>
+                      </div>
+
+                      {isLoadingResponses ? (
+                        <div className="flex flex-col items-center justify-center py-12 gap-3">
+                          <div className="w-8 h-8 border-3 border-amber-600 border-t-transparent rounded-full animate-spin"></div>
+                          <p className="text-[10px] text-amber-900/70 font-semibold uppercase tracking-wider">Communicating with Google Forms API...</p>
+                        </div>
+                      ) : responsesSummary ? (
+                        <div className="space-y-6">
+                          {/* Live response telemetry metrics counter */}
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pb-1">
+                            <div className="bg-[#121417]/5 p-4 rounded-2xl border border-neutral-100 flex items-center justify-between gap-2">
+                              <div className="space-y-0.5">
+                                <span className="text-[9.5px] uppercase font-black tracking-wider text-gray-400 block font-sans">
+                                  Total Submissions
+                                </span>
+                                <h5 className="text-2xl font-black font-sans text-amber-950">
+                                  {responsesSummary.totalResponses}
+                                </h5>
+                              </div>
+                              <span className="text-2xl">🗳️</span>
+                            </div>
+
+                            <div className="bg-[#121417]/5 p-4 rounded-2xl border border-neutral-100 flex items-center justify-between gap-2">
+                              <div className="space-y-0.5">
+                                <span className="text-[9.5px] uppercase font-black tracking-wider text-gray-400 block font-sans">
+                                  Average Score
+                                </span>
+                                <h5 className="text-2xl font-black font-sans text-emerald-800">
+                                  {responsesSummary.totalResponses > 0 ? (() => {
+                                    let sum = 0;
+                                    let items = 0;
+                                    Object.entries(responsesSummary.ratingsDistribution).forEach(([k, v]) => {
+                                      const starNum = parseInt(k.replace(' Star', '')) || 5;
+                                      const val = Number(v) || 0;
+                                      sum += starNum * val;
+                                      items += val;
+                                    });
+                                    return items > 0 ? (sum / items).toFixed(1) : '5.0';
+                                  })() : '5.0'} / 5.0
+                                </h5>
+                              </div>
+                              <span className="text-2xl">👑</span>
+                            </div>
+
+                            <div className="bg-[#121417]/5 p-4 rounded-2xl border border-neutral-100 flex items-center justify-between gap-2">
+                              <div className="space-y-0.5">
+                                <span className="text-[9.5px] uppercase font-black tracking-wider text-gray-400 block font-sans">
+                                  Unique Flavor Feedback
+                                </span>
+                                <h5 className="text-2xl font-black font-sans text-blue-900">
+                                  {Object.keys(responsesSummary.flavorVotes).length} flavours
+                                </h5>
+                              </div>
+                              <span className="text-2xl">🍯</span>
+                            </div>
+                          </div>
+
+                          {responsesSummary.totalResponses === 0 ? (
+                            <div className="bg-amber-50/20 text-center p-8 rounded-2xl text-xs text-amber-900/60 border border-dashed border-amber-100">
+                              No responses have been submitted to this Google Form yet. Share the public link or associate with the homepage to accumulate submissions.
+                            </div>
+                          ) : (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                              {/* Left Recharts Star Chart */}
+                              <div className="bg-[#121417]/5 border border-amber-500/10 p-5 rounded-2xl space-y-4">
+                                <h5 className="font-serif font-black text-amber-950 text-xs uppercase tracking-wider">
+                                  ⭐ Quality Ratings Distribution
+                                </h5>
+                                <div className="h-[200px] w-full">
+                                  <ResponsiveContainer width="100%" height="100%">
+                                    <BarChart
+                                      data={Object.entries(responsesSummary.ratingsDistribution)
+                                        .map(([star, count]) => ({ name: star, votes: count }))
+                                        .reverse()}
+                                      margin={{ top: 10, right: 10, left: -25, bottom: 5 }}
+                                    >
+                                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
+                                      <XAxis dataKey="name" tick={{ fill: '#4B5563', fontSize: 10 }} />
+                                      <YAxis allowDecimals={false} tick={{ fill: '#4B5563', fontSize: 9 }} />
+                                      <Tooltip />
+                                      <Bar dataKey="votes" fill="#D4AF37" radius={[5, 5, 0, 0]} />
+                                    </BarChart>
+                                  </ResponsiveContainer>
+                                </div>
+                              </div>
+
+                              {/* Right Flavor Selection list */}
+                              <div className="bg-[#121417]/5 border border-amber-500/10 p-5 rounded-2xl space-y-4">
+                                <h5 className="font-serif font-black text-amber-950 text-xs uppercase tracking-wider">
+                                  🍿 Flavor Votes Breakdown
+                                </h5>
+                                <ul className="space-y-2 text-xs">
+                                  {Object.entries(responsesSummary.flavorVotes)
+                                    .sort((a, b) => Number(b[1]) - Number(a[1]))
+                                    .map(([flavor, count], idx) => (
+                                      <li key={flavor} className="flex items-center justify-between bg-white px-3.5 py-2.5 rounded-xl border border-gray-100/50">
+                                        <span className="font-semibold text-neutral-800">{flavor}</span>
+                                        <span className="font-mono text-[10px] font-black text-[#A37B24] bg-amber-50/50 border border-amber-100 px-2 py-0.5 rounded">
+                                          {count} votes
+                                        </span>
+                                      </li>
+                                    ))}
+                                  {Object.keys(responsesSummary.flavorVotes).length === 0 && (
+                                    <li className="text-gray-400 text-center py-6 text-[10px]">
+                                      No flavor selections captured in submissions.
+                                    </li>
+                                  )}
+                                </ul>
+                              </div>
+
+                              {/* Bottom row: Qualitative Comments history */}
+                              <div className="md:col-span-2 bg-[#121417]/5 border border-amber-500/10 p-5 rounded-2xl space-y-3">
+                                <h5 className="font-serif font-black text-amber-950 text-xs uppercase tracking-wider pb-1.5 border-b border-gray-100">
+                                  💬 Qualitative Suggestions Hub ({responsesSummary.commentsHistory.length})
+                                </h5>
+                                <div className="max-h-[160px] overflow-y-auto space-y-2 pr-1 divide-y divide-gray-100">
+                                  {responsesSummary.commentsHistory.map((comment, idx) => (
+                                    <div key={idx} className="pt-2 pb-1.5 text-[11px] leading-relaxed text-gray-650 font-normal">
+                                      <span className="text-amber-600 font-serif mr-1">“</span>
+                                      <span className="select-all">{comment}</span>
+                                      <span className="text-amber-600 font-serif ml-1">”</span>
+                                    </div>
+                                  ))}
+                                  {responsesSummary.commentsHistory.length === 0 && (
+                                    <div className="text-gray-400 text-center py-6 text-[10px]">
+                                      No text comments recorded yet.
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="text-center py-8 text-gray-400 text-xs">
+                          Could not locate response analytics summary.
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
             </>

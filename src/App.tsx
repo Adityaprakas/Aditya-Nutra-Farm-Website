@@ -2,7 +2,7 @@ import React from 'react';
 import { 
   Star, ShoppingCart, ShieldCheck, Heart, Sparkles, Loader2, 
   ArrowRight, Landmark, BadgePercent, Lock, MessageSquare, Flame, Navigation, Plus, Minus, UserCheck, Play, Printer, Share2,
-  Camera, CameraOff, Search
+  Camera, CameraOff, Search, X
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -236,6 +236,32 @@ export default function App() {
   }, []);
 
   const [activeTab, setActiveTab] = React.useState<string>('home');
+  const [activeGoogleForm, setActiveGoogleForm] = React.useState<{ id: string; url: string; title: string } | null>(() => {
+    const fid = localStorage.getItem('an_active_google_form_id');
+    const furl = localStorage.getItem('an_active_google_form_url');
+    const ftitle = localStorage.getItem('an_active_google_form_title');
+    if (fid && furl) {
+      return { id: fid, url: furl, title: ftitle || 'Bihar Makhana Crunch Customer Feedback' };
+    }
+    return null;
+  });
+
+  React.useEffect(() => {
+    const syncFormBanner = () => {
+      const fid = localStorage.getItem('an_active_google_form_id');
+      const furl = localStorage.getItem('an_active_google_form_url');
+      const ftitle = localStorage.getItem('an_active_google_form_title');
+      if (fid && furl) {
+        setActiveGoogleForm({ id: fid, url: furl, title: ftitle || 'Bihar Makhana Crunch Customer Feedback' });
+      } else {
+        setActiveGoogleForm(null);
+      }
+    };
+
+    window.addEventListener('google-form-banner-updated', syncFormBanner);
+    return () => window.removeEventListener('google-form-banner-updated', syncFormBanner);
+  }, []);
+
   const [modalZoomStyle, setModalZoomStyle] = React.useState<React.CSSProperties>({});
   
   const handleModalMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -917,6 +943,38 @@ export default function App() {
       ? wishlist.filter(item => item !== id) 
       : [...wishlist, id];
     saveWishlist(updated);
+
+    const product = products.find(p => p.id === id);
+    if (product) {
+      const localized = getProductLocalization(language, product.name, product.description);
+      if (isSaved) {
+        triggerToast(
+          language === 'hi' 
+            ? `${localized.name} को इच्छा सूची (Wishlist) से हटाया गया।` 
+            : `${localized.name} has been removed from your wishlist.`,
+          "info"
+        );
+      } else {
+        triggerToast(
+          language === 'hi' 
+            ? `${localized.name} को इच्छा सूची (Wishlist) में जोड़ा गया!` 
+            : `${localized.name} has been added to your wishlist!`,
+          "success"
+        );
+      }
+    } else {
+      if (isSaved) {
+        triggerToast(
+          language === 'hi' ? "इच्छा सूची से हटाया गया!" : "Removed from wishlist.",
+          "info"
+        );
+      } else {
+        triggerToast(
+          language === 'hi' ? "इच्छा सूची में जोड़ा गया!" : "Added to wishlist!",
+          "success"
+        );
+      }
+    }
   };
 
   const [comparedIds, setComparedIds] = React.useState<number[]>([]);
@@ -1582,13 +1640,13 @@ export default function App() {
               </div>
 
               {loadingProducts ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 sm:gap-8 items-stretch">
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-6 md:gap-8 items-stretch">
                   {[1, 2, 3, 4].map((id) => (
                     <ProductCardSkeleton key={id} />
                   ))}
                 </div>
               ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 sm:gap-8 items-stretch">
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-6 md:gap-8 items-stretch">
                   {getDeduplicatedProducts(products).slice(0, 4).map((p) => (
                       <ProductCard
                         key={p.id}
@@ -1730,7 +1788,7 @@ export default function App() {
               {/* Bottom Row: Category Tabs Selection */}
               <div className="border-t border-white/5 pt-4">
                 <span className="block text-[10px] text-gray-500 font-bold uppercase tracking-widest mb-3">{language === 'hi' ? 'कैटेगरी फ़िल्टर' : 'Category Filter'}:</span>
-                <div className="flex flex-wrap gap-2 text-xs font-semibold font-sans overflow-x-auto no-scrollbar">
+                <div className="flex flex-wrap gap-2 text-xs font-semibold font-sans">
                   {[
                     { id: 'all', labelEn: 'All Products', labelHi: 'सभी उत्पाद' },
                     { id: 'raw-collection', labelEn: 'Raw Collection', labelHi: 'कच्चा मखाना' },
@@ -1761,7 +1819,7 @@ export default function App() {
                 {[1, 2].map((sectionIndex) => (
                   <div key={sectionIndex} className="space-y-6">
                     <div className="h-6 bg-white/10 rounded-md w-48 animate-pulse"></div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 sm:gap-8">
+                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-6 md:gap-8">
                       {[1, 2, 3, 4].map((id) => (
                         <ProductCardSkeleton key={id} />
                       ))}
@@ -1816,8 +1874,8 @@ export default function App() {
                         </p>
                       </div>
                       
-                      {/* Ultimate e-commerce grid layout: Exactly 4 products per row on Desktop, 2 on Tablet, 1 on Mobile */}
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 sm:gap-8 items-stretch">
+                      {/* Ultimate e-commerce grid layout: Exactly 4 products per row on Desktop, 2 on Tablet, 2 on Mobile */}
+                      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-6 md:gap-8 items-stretch">
                         {sec.products.map((p) => (
                           <ProductCard
                             key={p.id}
@@ -2360,9 +2418,29 @@ export default function App() {
               <div className="flex-grow flex flex-col justify-between overflow-y-auto p-6 text-center space-y-6">
                 
                 <div className="space-y-4 flex-grow flex flex-col justify-center">
-                  <div className="w-16 h-16 bg-emerald-50 rounded-full flex items-center justify-center text-emerald-600 mx-auto ring-4 ring-emerald-100 border border-emerald-300">
-                    <UserCheck size={28} />
-                  </div>
+                  <motion.div
+                    initial={{ scale: 0, rotate: -45 }}
+                    animate={{ scale: 1, rotate: 0 }}
+                    transition={{ type: "spring", stiffness: 220, damping: 15 }}
+                    className="w-16 h-16 bg-emerald-50 rounded-full flex items-center justify-center text-emerald-600 mx-auto ring-4 ring-emerald-100 border border-emerald-300 relative overflow-hidden shadow-sm animate-pulse-subtle"
+                  >
+                    <motion.svg
+                      className="w-8 h-8 text-emerald-600 z-10"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      strokeWidth={3.5}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <motion.path
+                        d="M5 13l4 4L19 7"
+                        initial={{ pathLength: 0 }}
+                        animate={{ pathLength: 1 }}
+                        transition={{ delay: 0.2, duration: 0.55, ease: "easeOut" }}
+                      />
+                    </motion.svg>
+                  </motion.div>
                   <div>
                     <h3 className="text-xl font-serif font-bold text-amber-950">E-Commerce Handshake Successful!</h3>
                     <p className="text-xs text-gray-500 mt-1">Your order #{lastPlacedOrder.id} has been created in our database cloud server.</p>
@@ -2825,6 +2903,62 @@ export default function App() {
           Farmer Chat
         </span>
       </a>
+
+      {/* 7.5 GOOGLE FORMS CUSTOMERS ENGAGEMENT PIPELINE BANNER */}
+      <AnimatePresence>
+        {activeGoogleForm && (
+          <motion.div
+            initial={{ opacity: 0, y: 50, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 40, scale: 0.95 }}
+            className={`fixed bottom-6 left-6 z-40 max-w-sm rounded-2xl shadow-2xl border p-5 space-y-3 font-sans ${theme === 'dark' ? 'bg-[#121417] text-white border-white/10 shadow-black/80' : 'bg-white border-amber-300 text-amber-950 shadow-amber-200/50'}`}
+            id="google-form-floating-campaign-banner"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="space-y-1">
+                <span className="bg-amber-100 text-amber-800 text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded leading-none">
+                  📝 {language === 'hi' ? 'विशेष फीडबैक सर्वे' : 'Exclusive Brand Survey'}
+                </span>
+                <h4 className="font-serif font-black text-xs sm:text-sm">
+                  {activeGoogleForm.title}
+                </h4>
+              </div>
+              <button
+                type="button"
+                onClick={() => setActiveGoogleForm(null)}
+                className="text-gray-400 hover:text-gray-600 p-1 rounded-full hover:bg-neutral-150 transition-colors border-none bg-transparent cursor-pointer"
+                title="Dismiss Banner"
+              >
+                <X size={14} />
+              </button>
+            </div>
+            
+            <p className="text-[11px] leading-relaxed text-gray-400 font-normal">
+              {language === 'hi' 
+                ? 'हमारे मखाने के स्वाद और गुणवत्ता पर 2 मिनट का सर्वे भरकर हमें बेहतर बनने में मदद करें!' 
+                : 'Help us improve by filling out a quick 2-minute survey about our crunch quality and flavoring!'}
+            </p>
+
+            <div className="pt-1.5 flex items-center gap-2">
+              <a
+                href={activeGoogleForm.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => {
+                  if (triggerToast) triggerToast(
+                    language === 'hi' ? 'सर्वेक्षण फॉर्म खुल रहा है, धन्यवाद!' : 'Opening feedback survey form. Thank you!', 
+                    'success'
+                  );
+                }}
+                className="bg-[#D4AF37] hover:bg-[#Bca025] text-amber-950 font-black text-[10px] uppercase tracking-wider py-2 px-4 rounded-lg shadow-sm transition-all text-center flex-grow flex items-center justify-center gap-1.5"
+              >
+                <span>{language === 'hi' ? 'गूगल फॉर्म भरें' : 'Share Feedback on Google Forms'}</span>
+                <ArrowRight size={11} />
+              </a>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* 8. BRAND CUSTOM TOAST ALERTS OVERLAY DESIGN */}
       <AnimatePresence>
